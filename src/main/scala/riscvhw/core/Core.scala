@@ -37,7 +37,11 @@ class CoreIo(implicit c: RiscvhwConfig) extends Bundle {
 class Core(implicit c: RiscvhwConfig) extends Module {
   val io = IO(new CoreIo)
 
-  val sFetch :: sExec :: sMem :: sWb :: Nil = Enum(4)
+  // sTrap is its own state rather than logic folded into the commit state. It
+  // costs a cycle per trap, which does not matter here, and it makes the trap
+  // visible in a waveform and in the trace as a distinct step. Every later
+  // stage adds states the same way -- the page-table walk will too.
+  val sFetch :: sExec :: sMem :: sWb :: sTrap :: Nil = Enum(5)
   val state = RegInit(sFetch)
 
   // Tracks that this state's memory request has been accepted, so `valid` is
@@ -127,10 +131,48 @@ class Core(implicit c: RiscvhwConfig) extends Module {
 
   // Trap sequencing arrives in the next commit; the ports exist so the CSR file
   // needs no change when it does.
-  csr.io.trap.valid := false.B
-  csr.io.trap.cause := 0.U
-  csr.io.trap.epc   := 0.U
-  csr.io.trap.tval  := 0.U
+  // Trap inputs are wired after the exception logic below, which needs
+  // csr.io.rw.illegal from this module and so cannot come first.
+
+  // ---------------- exceptions ----------------
+  // Misalignment is checked against the access width: a doubleword needs the
+  // low three address bits clear, a word two, a halfword one, a byte none.
+  val memAddr    = alu_out
+  val alignMask  = ((1.U << cs.mem_size) - 1.U)(2, 0)
+  val dataMisaligned = cs.mem_en && (memAddr(2, 0) & alignMask).orR
+
+  // A jump or branch that resolves to a misaligned target faults, and the fault
+  // is attributed to the jump, not to the instruction that never ran.
+  val instMisaligned = br_taken && pc_next(1, 0).orR
+
+  val illegalInst = !cs.legal || csr.io.rw.illegal
+
+  // Priority is fixed by the specification: an instruction that is not legal
+  // cannot also be said to have a misaligned operand address.
+  val exception = (state === sExec) &&
+                  (instMisaligned || illegalInst || cs.ecall || cs.ebreak || dataMisaligned)
+
+  val cause = Mux(instMisaligned, Cause.InstAddrMisaligned.U,
+              Mux(illegalInst,    Cause.IllegalInstruction.U,
+              Mux(cs.ecall,       Cause.EcallM.U,
+              Mux(cs.ebreak,      Cause.Breakpoint.U,
+              Mux(cs.mem_wr,      Cause.StoreAddrMisaligned.U,
+                                  Cause.LoadAddrMisaligned.U)))))
+
+  // mtval carries whatever a handler needs to make sense of the fault: the
+  // offending encoding for an illegal instruction, the address for a
+  // misaligned access, the pc for a breakpoint, and nothing for an ecall.
+  val tval = Mux(instMisaligned, pc_next,
+             Mux(illegalInst,    Cat(0.U((c.xlen - 32).W), inst),
+             Mux(cs.ebreak,      pc,
+             Mux(dataMisaligned, memAddr, 0.U))))
+
+  // The CSR update lands on the same edge that redirects the pc. Cause and
+  // tval are captured when the exception is detected, one state earlier.
+  csr.io.trap.valid := state === sTrap
+  csr.io.trap.cause := RegEnable(cause, exception)
+  csr.io.trap.epc   := pc
+  csr.io.trap.tval  := RegEnable(tval, exception)
   csr.io.eret       := false.B
 
   // ---------------- writeback ----------------
@@ -156,7 +198,9 @@ class Core(implicit c: RiscvhwConfig) extends Module {
   io.dmem.req.bits.write  := cs.mem_wr
   io.dmem.resp.ready      := state === sMem
 
-  io.illegal := (state === sExec) && (!cs.legal || csr.io.rw.illegal)
+  // Now that an illegal instruction traps, this is only a testbench convenience
+  // for spotting a core that has wandered off, not an error condition.
+  io.illegal := (state === sExec) && illegalInst
 
   // ---------------- state machine ----------------
   // Each state waits for its handshake, so a memory that takes many cycles
@@ -171,7 +215,10 @@ class Core(implicit c: RiscvhwConfig) extends Module {
       }
     }
     is (sExec) {
-      state := Mux(cs.mem_en, sMem, sWb)
+      // A trapping instruction never reaches the memory or commit states, so
+      // it can leave no architectural trace behind: no store is issued and no
+      // register is written. That is precisely what a separate state buys.
+      state := Mux(exception, sTrap, Mux(cs.mem_en, sMem, sWb))
     }
     is (sMem) {
       when (io.dmem.req.fire)  { reqSent := true.B }
@@ -186,13 +233,20 @@ class Core(implicit c: RiscvhwConfig) extends Module {
       pc    := pc_next
       state := sFetch
     }
+    is (sTrap) {
+      pc    := csr.io.trapVector
+      state := sFetch
+    }
   }
 
   // ---------------- trace ----------------
-  io.trace.valid := state === sWb
+  // A trapping instruction retires too -- it just retires into the handler.
+  // Reporting it keeps the trace comparable with the emulator, which also emits
+  // a line for an ecall.
+  io.trace.valid := (state === sWb) || (state === sTrap)
   io.trace.pc    := pc
   io.trace.inst  := inst
-  io.trace.wen   := wb_en
+  io.trace.wen   := wb_en && (state === sWb)
   io.trace.waddr := rd_addr
   io.trace.wdata := wb_data
 }

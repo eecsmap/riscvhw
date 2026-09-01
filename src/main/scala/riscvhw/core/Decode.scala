@@ -20,87 +20,92 @@ class CtrlSignals extends Bundle {
   val mem_size= UInt(2.W)
   val mem_sgn = Bool()       // sign-extend sub-word loads
   val csr_cmd = UInt(3.W)    // CsrCmd; N for everything that is not a CSR access
+  val ecall   = Bool()
+  val ebreak  = Bool()
 }
 
 object Decode {
   import riscvhw.mem.MemSize._
 
-  //                 legal | br_type| op1_sel | op2_sel | imm_sel| alu_fun  | wb_sel| rf_wen| mem_en| mem_wr| size| signed| csr_cmd
-  private val X = List(N, BR_N,  OP1_ZERO, OP2_ZERO, IMM_X, ALU_X,    WB_X,   N,      N,      N,      D,    N,     CsrCmd.N)
+  //                 legal | br_type| op1_sel | op2_sel | imm_sel| alu_fun  | wb_sel| rf_wen| mem_en| mem_wr| size| signed| csr_cmd | ecall | ebreak
+  private val X = List(N, BR_N,  OP1_ZERO, OP2_ZERO, IMM_X, ALU_X,    WB_X,   N,      N,      N,      D,    N,     CsrCmd.N, N, N)
 
   val table: Array[(BitPat, List[UInt])] = Array(
     // ---- loads ----
-    LB    -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_ADD,  WB_MEM, Y,      Y,      N,      B,    Y, CsrCmd.N),
-    LH    -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_ADD,  WB_MEM, Y,      Y,      N,      H,    Y, CsrCmd.N),
-    LW    -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_ADD,  WB_MEM, Y,      Y,      N,      W,    Y, CsrCmd.N),
-    LD    -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_ADD,  WB_MEM, Y,      Y,      N,      D,    Y, CsrCmd.N),
-    LBU   -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_ADD,  WB_MEM, Y,      Y,      N,      B,    N, CsrCmd.N),
-    LHU   -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_ADD,  WB_MEM, Y,      Y,      N,      H,    N, CsrCmd.N),
-    LWU   -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_ADD,  WB_MEM, Y,      Y,      N,      W,    N, CsrCmd.N),
+    LB    -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_ADD,  WB_MEM, Y,      Y,      N,      B,    Y, CsrCmd.N, N, N),
+    LH    -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_ADD,  WB_MEM, Y,      Y,      N,      H,    Y, CsrCmd.N, N, N),
+    LW    -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_ADD,  WB_MEM, Y,      Y,      N,      W,    Y, CsrCmd.N, N, N),
+    LD    -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_ADD,  WB_MEM, Y,      Y,      N,      D,    Y, CsrCmd.N, N, N),
+    LBU   -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_ADD,  WB_MEM, Y,      Y,      N,      B,    N, CsrCmd.N, N, N),
+    LHU   -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_ADD,  WB_MEM, Y,      Y,      N,      H,    N, CsrCmd.N, N, N),
+    LWU   -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_ADD,  WB_MEM, Y,      Y,      N,      W,    N, CsrCmd.N, N, N),
     // ---- stores ----
-    SB    -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_S, ALU_ADD,  WB_X,   N,      Y,      Y,      B,    N, CsrCmd.N),
-    SH    -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_S, ALU_ADD,  WB_X,   N,      Y,      Y,      H,    N, CsrCmd.N),
-    SW    -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_S, ALU_ADD,  WB_X,   N,      Y,      Y,      W,    N, CsrCmd.N),
-    SD    -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_S, ALU_ADD,  WB_X,   N,      Y,      Y,      D,    N, CsrCmd.N),
+    SB    -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_S, ALU_ADD,  WB_X,   N,      Y,      Y,      B,    N, CsrCmd.N, N, N),
+    SH    -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_S, ALU_ADD,  WB_X,   N,      Y,      Y,      H,    N, CsrCmd.N, N, N),
+    SW    -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_S, ALU_ADD,  WB_X,   N,      Y,      Y,      W,    N, CsrCmd.N, N, N),
+    SD    -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_S, ALU_ADD,  WB_X,   N,      Y,      Y,      D,    N, CsrCmd.N, N, N),
     // ---- upper immediates ----
     // LUI is 0 + imm, not a dedicated copy op: OP1_ZERO exists precisely so the
     // ALU needs no pass-through function.
-    LUI   -> List(Y, BR_N,  OP1_ZERO, OP2_IMM,  IMM_U, ALU_ADD,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
-    AUIPC -> List(Y, BR_N,  OP1_PC,   OP2_IMM,  IMM_U, ALU_ADD,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
+    LUI   -> List(Y, BR_N,  OP1_ZERO, OP2_IMM,  IMM_U, ALU_ADD,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    AUIPC -> List(Y, BR_N,  OP1_PC,   OP2_IMM,  IMM_U, ALU_ADD,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
     // ---- register-immediate ----
-    ADDI  -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_ADD,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
-    SLTI  -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_SLT,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
-    SLTIU -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_SLTU, WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
-    XORI  -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_XOR,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
-    ORI   -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_OR,   WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
-    ANDI  -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_AND,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
-    SLLI  -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_SLL,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
-    SRLI  -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_SRL,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
-    SRAI  -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_SRA,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
+    ADDI  -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_ADD,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    SLTI  -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_SLT,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    SLTIU -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_SLTU, WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    XORI  -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_XOR,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    ORI   -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_OR,   WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    ANDI  -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_AND,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    SLLI  -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_SLL,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    SRLI  -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_SRL,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    SRAI  -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_SRA,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
     // ---- register-register ----
-    ADD   -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_ADD,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
-    SUB   -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_SUB,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
-    SLL   -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_SLL,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
-    SLT   -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_SLT,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
-    SLTU  -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_SLTU, WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
-    XOR   -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_XOR,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
-    SRL   -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_SRL,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
-    SRA   -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_SRA,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
-    OR    -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_OR,   WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
-    AND   -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_AND,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
+    ADD   -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_ADD,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    SUB   -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_SUB,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    SLL   -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_SLL,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    SLT   -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_SLT,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    SLTU  -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_SLTU, WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    XOR   -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_XOR,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    SRL   -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_SRL,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    SRA   -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_SRA,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    OR    -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_OR,   WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    AND   -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_AND,  WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
     // ---- RV64 word forms ----
-    ADDIW -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_ADDW, WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
-    SLLIW -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_SLLW, WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
-    SRLIW -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_SRLW, WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
-    SRAIW -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_SRAW, WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
-    ADDW  -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_ADDW, WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
-    SUBW  -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_SUBW, WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
-    SLLW  -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_SLLW, WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
-    SRLW  -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_SRLW, WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
-    SRAW  -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_SRAW, WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N),
+    ADDIW -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_ADDW, WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    SLLIW -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_SLLW, WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    SRLIW -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_SRLW, WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    SRAIW -> List(Y, BR_N,  OP1_RS1,  OP2_IMM,  IMM_I, ALU_SRAW, WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    ADDW  -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_ADDW, WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    SUBW  -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_SUBW, WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    SLLW  -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_SLLW, WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    SRLW  -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_SRLW, WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    SRAW  -> List(Y, BR_N,  OP1_RS1,  OP2_RS2,  IMM_X, ALU_SRAW, WB_ALU, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
     // ---- control transfer ----
     // JAL/JALR compute their target in a dedicated adder, so the ALU is free to
     // produce the link value's source (pc+4 comes from the fetch adder via WB_PC4).
-    JAL   -> List(Y, BR_J,  OP1_PC,   OP2_IMM,  IMM_J, ALU_ADD,  WB_PC4, Y,      N,      N,      D,    N, CsrCmd.N),
-    JALR  -> List(Y, BR_JR, OP1_RS1,  OP2_IMM,  IMM_I, ALU_ADD,  WB_PC4, Y,      N,      N,      D,    N, CsrCmd.N),
-    BEQ   -> List(Y, BR_EQ, OP1_PC,   OP2_IMM,  IMM_B, ALU_ADD,  WB_X,   N,      N,      N,      D,    N, CsrCmd.N),
-    BNE   -> List(Y, BR_NE, OP1_PC,   OP2_IMM,  IMM_B, ALU_ADD,  WB_X,   N,      N,      N,      D,    N, CsrCmd.N),
-    BLT   -> List(Y, BR_LT, OP1_PC,   OP2_IMM,  IMM_B, ALU_ADD,  WB_X,   N,      N,      N,      D,    N, CsrCmd.N),
-    BGE   -> List(Y, BR_GE, OP1_PC,   OP2_IMM,  IMM_B, ALU_ADD,  WB_X,   N,      N,      N,      D,    N, CsrCmd.N),
-    BLTU  -> List(Y, BR_LTU,OP1_PC,   OP2_IMM,  IMM_B, ALU_ADD,  WB_X,   N,      N,      N,      D,    N, CsrCmd.N),
-    BGEU  -> List(Y, BR_GEU,OP1_PC,   OP2_IMM,  IMM_B, ALU_ADD,  WB_X,   N,      N,      N,      D,    N, CsrCmd.N),
+    JAL   -> List(Y, BR_J,  OP1_PC,   OP2_IMM,  IMM_J, ALU_ADD,  WB_PC4, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    JALR  -> List(Y, BR_JR, OP1_RS1,  OP2_IMM,  IMM_I, ALU_ADD,  WB_PC4, Y,      N,      N,      D,    N, CsrCmd.N, N, N),
+    BEQ   -> List(Y, BR_EQ, OP1_PC,   OP2_IMM,  IMM_B, ALU_ADD,  WB_X,   N,      N,      N,      D,    N, CsrCmd.N, N, N),
+    BNE   -> List(Y, BR_NE, OP1_PC,   OP2_IMM,  IMM_B, ALU_ADD,  WB_X,   N,      N,      N,      D,    N, CsrCmd.N, N, N),
+    BLT   -> List(Y, BR_LT, OP1_PC,   OP2_IMM,  IMM_B, ALU_ADD,  WB_X,   N,      N,      N,      D,    N, CsrCmd.N, N, N),
+    BGE   -> List(Y, BR_GE, OP1_PC,   OP2_IMM,  IMM_B, ALU_ADD,  WB_X,   N,      N,      N,      D,    N, CsrCmd.N, N, N),
+    BLTU  -> List(Y, BR_LTU,OP1_PC,   OP2_IMM,  IMM_B, ALU_ADD,  WB_X,   N,      N,      N,      D,    N, CsrCmd.N, N, N),
+    BGEU  -> List(Y, BR_GEU,OP1_PC,   OP2_IMM,  IMM_B, ALU_ADD,  WB_X,   N,      N,      N,      D,    N, CsrCmd.N, N, N),
     // ---- CSR access ----
     // rd receives the OLD value, so wb_sel is WB_CSR; the new value comes from
     // the ALU, which just passes op1 through by adding zero.
-    CSRRW  -> List(Y, BR_N, OP1_RS1,  OP2_ZERO, IMM_X, ALU_ADD, WB_CSR, Y, N, N, D, N, CsrCmd.W),
-    CSRRS  -> List(Y, BR_N, OP1_RS1,  OP2_ZERO, IMM_X, ALU_ADD, WB_CSR, Y, N, N, D, N, CsrCmd.S),
-    CSRRC  -> List(Y, BR_N, OP1_RS1,  OP2_ZERO, IMM_X, ALU_ADD, WB_CSR, Y, N, N, D, N, CsrCmd.C),
-    CSRRWI -> List(Y, BR_N, OP1_ZIMM, OP2_ZERO, IMM_X, ALU_ADD, WB_CSR, Y, N, N, D, N, CsrCmd.W),
-    CSRRSI -> List(Y, BR_N, OP1_ZIMM, OP2_ZERO, IMM_X, ALU_ADD, WB_CSR, Y, N, N, D, N, CsrCmd.S),
-    CSRRCI -> List(Y, BR_N, OP1_ZIMM, OP2_ZERO, IMM_X, ALU_ADD, WB_CSR, Y, N, N, D, N, CsrCmd.C),
+    CSRRW  -> List(Y, BR_N, OP1_RS1,  OP2_ZERO, IMM_X, ALU_ADD, WB_CSR, Y, N, N, D, N, CsrCmd.W, N, N),
+    CSRRS  -> List(Y, BR_N, OP1_RS1,  OP2_ZERO, IMM_X, ALU_ADD, WB_CSR, Y, N, N, D, N, CsrCmd.S, N, N),
+    CSRRC  -> List(Y, BR_N, OP1_RS1,  OP2_ZERO, IMM_X, ALU_ADD, WB_CSR, Y, N, N, D, N, CsrCmd.C, N, N),
+    CSRRWI -> List(Y, BR_N, OP1_ZIMM, OP2_ZERO, IMM_X, ALU_ADD, WB_CSR, Y, N, N, D, N, CsrCmd.W, N, N),
+    CSRRSI -> List(Y, BR_N, OP1_ZIMM, OP2_ZERO, IMM_X, ALU_ADD, WB_CSR, Y, N, N, D, N, CsrCmd.S, N, N),
+    CSRRCI -> List(Y, BR_N, OP1_ZIMM, OP2_ZERO, IMM_X, ALU_ADD, WB_CSR, Y, N, N, D, N, CsrCmd.C, N, N),
+    // ---- environment calls: legal instructions whose only effect is a trap ----
+    ECALL  -> List(Y, BR_N, OP1_ZERO, OP2_ZERO, IMM_X, ALU_ADD, WB_X, N, N, N, D, N, CsrCmd.N, Y, N),
+    EBREAK -> List(Y, BR_N, OP1_ZERO, OP2_ZERO, IMM_X, ALU_ADD, WB_X, N, N, N, D, N, CsrCmd.N, N, Y),
     // ---- fences: no-ops in an in-order core with one outstanding access ----
-    FENCE   -> List(Y, BR_N, OP1_ZERO, OP2_ZERO, IMM_X, ALU_ADD, WB_X,   N,      N,      N,      D,    N, CsrCmd.N),
-    FENCE_I -> List(Y, BR_N, OP1_ZERO, OP2_ZERO, IMM_X, ALU_ADD, WB_X,   N,      N,      N,      D,    N, CsrCmd.N),
+    FENCE   -> List(Y, BR_N, OP1_ZERO, OP2_ZERO, IMM_X, ALU_ADD, WB_X,   N,      N,      N,      D,    N, CsrCmd.N, N, N),
+    FENCE_I -> List(Y, BR_N, OP1_ZERO, OP2_ZERO, IMM_X, ALU_ADD, WB_X,   N,      N,      N,      D,    N, CsrCmd.N, N, N),
   )
 
   def apply(inst: UInt): CtrlSignals = {
@@ -119,6 +124,8 @@ object Decode {
     cs.mem_size := d(10)
     cs.mem_sgn  := d(11).asBool
     cs.csr_cmd  := d(12)
+    cs.ecall    := d(13).asBool
+    cs.ebreak   := d(14).asBool
     cs
   }
 }

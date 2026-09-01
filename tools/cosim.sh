@@ -18,7 +18,7 @@ cd "$LAB"
 # Programs whose results are checked against the specification rather than
 # against riscvm: WARL folding and machine-configuration differences are places
 # where two conformant implementations may legitimately disagree.
-SPEC_ONLY="rv64_csr_warl"
+SPEC_ONLY="rv64_csr_warl rv64_trap"
 
 if [ $# -gt 0 ]; then PROGS=("$@"); else
   mapfile -t PROGS < <(cd tests && ls *.S | sed 's/\.S$//')

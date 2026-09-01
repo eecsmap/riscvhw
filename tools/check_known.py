@@ -57,8 +57,34 @@ WARL = {
 }
 
 
+# Exception causes and mtval contents, checked against the specification.
+#
+# Not co-simulated: riscvm raises a Python error for an illegal instruction
+# rather than trapping, and never checks access alignment, so there is nothing
+# to compare against. Once riscvm grows those traps these can move to
+# co-simulation.
+TRAP = {
+    # csrr t0, mcause after `.word 0xffffffff`
+    '342022f3': '0000000000000002',   # illegal instruction
+    # csrr t1, mtval -- the offending encoding itself
+    '34302373': '00000000ffffffff',
+    # csrr s1, mcause after `ld` from scratch+1
+    '342024f3': '0000000000000004',   # load address misaligned
+    # csrr a0, mtval -- the effective address, not the base
+    '34302573': '0000000080000081',
+    # csrr a3, mcause after `sw` to scratch+2
+    '342026f3': '0000000000000006',   # store address misaligned
+    '34302773': '0000000080000082',
+    # csrr a5, mcause after ebreak
+    '342027f3': '0000000000000003',   # breakpoint
+    # csrr a6, mepc -- the address of the ebreak, not the instruction after it
+    '34102873': '000000008000006c',
+}
+
+
 def main(path):
-    table = WARL if 'warl' in path else EXPECTED
+    table = (WARL if 'warl' in path else
+             TRAP if 'trap' in path else EXPECTED)
     seen, bad = {}, []
     for line in open(path):
         parts = line.split()

@@ -31,5 +31,33 @@ _start:
   csrrw  x0, mstatus, x7
   csrr   x8, mstatus            # only MIE, MPIE and MPP come back
 
+  # MRET sets MPP to the least-privileged mode the machine implements. This
+  # core has only M, so MPP stays M -- riscvm implements U and sets 0 there.
+  # Both follow the specification; they just describe different machines.
+  la     x9, after_mret
+  csrw   mepc, x9
+  mret
+after_mret:
+  csrr   x10, mstatus          # MPP == 3 (M), MPIE == 1, MIE popped from MPIE
+
+  # MIE must survive a trap and return: set it, take a trap, come back.
+  li     x11, 8                # MSTATUS.MIE
+  csrw   mstatus, x11
+  la     x12, h_ret
+  csrw   mtvec, x12
+  ecall
+back:
+  csrr   x15, mstatus          # after the return: MIE restored from MPIE
+
 halt:
   j     halt
+
+  # The handler must be out of line. Placing it directly after the ecall makes
+  # mepc+4 land inside the handler itself, and the mret loops forever.
+  .align 2
+h_ret:
+  csrr   x13, mstatus          # inside the handler: MIE cleared, MPIE holds it
+  csrr   x14, mepc
+  addi   x14, x14, 4
+  csrw   mepc, x14
+  mret

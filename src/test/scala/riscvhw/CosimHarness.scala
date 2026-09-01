@@ -88,7 +88,7 @@ class CosimSpec extends AnyFlatSpec with ChiselScalatestTester {
   // second is not redundant: it is the standing check that memory latency
   // changes only how long the core takes, never what it computes.
   // Programs compared against riscvm instruction for instruction.
-  private val programs = Seq("rv64i_basic", "rv64i_edge", "rv64_csr", "rv64_ecall", "rv64_trap")
+  private val programs = Seq("rv64i_basic", "rv64i_edge", "rv64_csr", "rv64_ecall", "rv64_trap", "rv64_mret")
 
   // Programs run on the hardware only, whose results are checked against the
   // specification instead. Co-simulation is the wrong instrument for WARL

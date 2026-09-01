@@ -69,6 +69,8 @@ object Instructions {
   // Environment calls. Both are fully specified encodings, not families.
   def ECALL  = BitPat("b00000000000000000000000001110011")
   def EBREAK = BitPat("b00000000000100000000000001110011")
+  // Trap return. SRET and WFI arrive with S-mode and interrupts respectively.
+  def MRET   = BitPat("b00110000001000000000000001110011")
   // CSR access. The immediate forms take a 5-bit zero-extended value from the
   // rs1 field rather than a register.
   def CSRRW  = BitPat("b?????????????????001?????1110011")

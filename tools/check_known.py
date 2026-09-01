@@ -54,6 +54,15 @@ WARL = {
     '34102373': '0000000080001004',
     # csrr s0, mstatus after writing all ones -- only MIE, MPIE and MPP exist
     '30002473': '0000000000001888',
+    # csrr a0, mstatus after MRET -- MPP goes to the least-privileged mode the
+    # machine implements, which is M here because there is no U mode yet.
+    # riscvm implements U and sets 0; both follow the specification.
+    '30002573': '0000000000001888',
+    # The interrupt-enable stack, observed at both ends of a trap.
+    # csrr a3, mstatus inside the handler: MIE cleared, MPIE holding the old MIE
+    '300026f3': '0000000000001880',
+    # csrr a5, mstatus after the MRET: MIE restored from MPIE
+    '300027f3': '0000000000001888',
 }
 
 

@@ -173,7 +173,9 @@ class Core(implicit c: RiscvhwConfig) extends Module {
   csr.io.trap.cause := RegEnable(cause, exception)
   csr.io.trap.epc   := pc
   csr.io.trap.tval  := RegEnable(tval, exception)
-  csr.io.eret       := false.B
+  // Asserted in the commit state so the mstatus pop lands on the same edge as
+  // the pc restore.
+  csr.io.eret       := (state === sWb) && cs.eret
 
   // ---------------- writeback ----------------
   val wb_data = MuxLookup(cs.wb_sel, alu_out)(Seq(
@@ -230,7 +232,10 @@ class Core(implicit c: RiscvhwConfig) extends Module {
     }
     is (sWb) {
       when (wb_en) { regfile(rd_addr) := wb_data }
-      pc    := pc_next
+      // MRET's target is architectural state rather than a computed address, so
+      // it bypasses the branch/jump target logic entirely. mepc is always
+      // aligned -- its low bits are hardwired to zero -- so it cannot fault.
+      pc    := Mux(cs.eret, csr.io.epc, pc_next)
       state := sFetch
     }
     is (sTrap) {

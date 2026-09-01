@@ -1,0 +1,12 @@
+target/
+project/target/
+project/project/
+.bloop/
+.bsp/
+.metals/
+.idea/
+generated/
+*.fir
+*.sv
+!src/**/*.sv
+test_run_dir/

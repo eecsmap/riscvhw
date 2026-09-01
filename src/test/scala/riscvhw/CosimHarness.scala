@@ -87,7 +87,22 @@ class CosimSpec extends AnyFlatSpec with ChiselScalatestTester {
   // Every program in tests/ gets both a normal run and a slow-memory run. The
   // second is not redundant: it is the standing check that memory latency
   // changes only how long the core takes, never what it computes.
-  private val programs = Seq("rv64i_basic", "rv64i_edge")
+  // Programs compared against riscvm instruction for instruction.
+  private val programs = Seq("rv64i_basic", "rv64i_edge", "rv64_csr")
+
+  // Programs run on the hardware only, whose results are checked against the
+  // specification instead. Co-simulation is the wrong instrument for WARL
+  // fields and for anything that depends on machine configuration, because two
+  // conformant implementations are allowed to differ there.
+  private val specOnly = Seq("rv64_csr_warl")
+
+  for (p <- specOnly) {
+    it should s"produce a trace for $p to check against the specification" in {
+      val n = Cosim.run(s"tests/$p.bin", s"tests/$p.hw.trace", maxInstrs = 4000)
+      println(s"[cosim] $p: $n instructions (spec-checked)")
+      assert(n > 0, s"$p retired no instructions")
+    }
+  }
 
   for (p <- programs) {
     it should s"produce a commit trace for $p" in {

@@ -34,18 +34,41 @@ EXPECTED = {
     '012899bb': 'ffffffff80000000',
 }
 
+# WARL fields, checked against the specification rather than against riscvm.
+#
+# "Write Any values, Read Legal values" lets an implementation choose WHICH
+# legal value an illegal write folds to, so two conformant cores can disagree
+# here and both be right -- riscvm stores mtvec's reserved mode bits verbatim.
+# The same applies to anything that depends on machine configuration: riscvm
+# implements the C extension and this core does not, so IALIGN differs and the
+# two legitimately disagree about how many low bits mepc keeps.
+#
+# Co-simulation is the wrong instrument for both categories. These are the
+# right one.
+WARL = {
+    # csrr sp, mtvec after writing 0x80002002 -- mode 2 is reserved, folds away
+    '30502173': '0000000080002000',
+    # csrr tp, mtvec after writing 0x80002001 -- mode 1 (vectored) is legal
+    '30502273': '0000000080002001',
+    # csrr t1, mepc after writing 0x80001006 -- IALIGN=32, so mepc[1:0] read zero
+    '34102373': '0000000080001004',
+    # csrr s0, mstatus after writing all ones -- only MIE, MPIE and MPP exist
+    '30002473': '0000000000001888',
+}
+
 
 def main(path):
+    table = WARL if 'warl' in path else EXPECTED
     seen, bad = {}, []
     for line in open(path):
         parts = line.split()
         if len(parts) < 3:
             continue
         inst, wr = parts[1], parts[2]
-        if inst in EXPECTED and inst not in seen:
+        if inst in table and inst not in seen:
             seen[inst] = wr.split('=', 1)[1]
 
-    for inst, want in EXPECTED.items():
+    for inst, want in table.items():
         got = seen.get(inst)
         if got is None:
             bad.append(f'  {inst}: never executed')
@@ -56,7 +79,7 @@ def main(path):
         print(f'KNOWN-ANSWER FAILURES in {path}:')
         print('\n'.join(bad))
         return 1
-    print(f'OK: {len(EXPECTED)} known-answer checks passed')
+    print(f'OK: {len(table)} known-answer checks passed')
     return 0
 
 

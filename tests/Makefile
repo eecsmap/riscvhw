@@ -4,7 +4,7 @@ GCC     := riscv64-unknown-elf-gcc
 OBJCOPY := riscv64-unknown-elf-objcopy
 OBJDUMP := riscv64-unknown-elf-objdump
 
-CFLAGS  := -march=rv64i -mabi=lp64 -nostdlib -nostartfiles -Wl,-Ttext=0x80000000
+CFLAGS  := -march=rv64i_zicsr -mabi=lp64 -nostdlib -nostartfiles -Wl,-Ttext=0x80000000
 
 SRCS := $(wildcard *.S)
 BINS := $(SRCS:.S=.bin)

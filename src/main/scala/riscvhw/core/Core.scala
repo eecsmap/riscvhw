@@ -65,8 +65,11 @@ class Core(implicit c: RiscvhwConfig) extends Module {
 
   val imm = ImmGen(inst, cs.imm_sel, c.xlen)
 
+  // The CSRRxI forms take a 5-bit zero-extended value from the rs1 field.
+  val zimm = Cat(0.U((c.xlen - 5).W), rs1_addr)
+
   val op1 = MuxLookup(cs.op1_sel, 0.U)(Seq(
-    OP1_ZERO -> 0.U, OP1_RS1 -> rs1_data, OP1_PC -> pc))
+    OP1_ZERO -> 0.U, OP1_RS1 -> rs1_data, OP1_PC -> pc, OP1_ZIMM -> zimm))
   val op2 = MuxLookup(cs.op2_sel, 0.U)(Seq(
     OP2_ZERO -> 0.U, OP2_RS2 -> rs2_data, OP2_IMM -> imm))
 
@@ -96,9 +99,44 @@ class Core(implicit c: RiscvhwConfig) extends Module {
   val pc_next = Mux(!br_taken, pc_plus4,
                 Mux(cs.br_type === BR_JR, jalr_target, brjmp_target))
 
+  // ---------------- CSRs ----------------
+  val csr = Module(new CsrFile)
+  csr.io.hartid := 0.U
+
+  // CSRRS/CSRRC with rs1 = x0 must not write -- not even the value already
+  // present, because a CSR write can have side effects. `csrr rd, csr` is
+  // exactly that encoding. The immediate forms use the same field, so a zero
+  // there means the same thing.
+  //
+  // The mirror rule, CSRRW with rd = x0 not reading, has no observable effect
+  // while no CSR has read side effects, so it is left unimplemented rather than
+  // written as dead logic.
+  val csrSrcIsZero = rs1_addr === 0.U
+  val csrCmd = Mux(csrSrcIsZero && (cs.csr_cmd === CsrCmd.S || cs.csr_cmd === CsrCmd.C),
+                   CsrCmd.R, cs.csr_cmd)
+
+  // Held to N except in the commit state, so the CSR write and the register
+  // writeback land on the same clock edge: one instruction, one commit.
+  csr.io.rw.cmd   := Mux(state === sWb, csrCmd,
+                         // outside the commit state the command is still shown
+                         // for the legality check, but as a read so nothing is
+                         // written before the instruction actually commits
+                         Mux(cs.csr_cmd === CsrCmd.N, CsrCmd.N, CsrCmd.R))
+  csr.io.rw.addr  := inst(31, 20)
+  csr.io.rw.wdata := alu_out
+
+  // Trap sequencing arrives in the next commit; the ports exist so the CSR file
+  // needs no change when it does.
+  csr.io.trap.valid := false.B
+  csr.io.trap.cause := 0.U
+  csr.io.trap.epc   := 0.U
+  csr.io.trap.tval  := 0.U
+  csr.io.eret       := false.B
+
   // ---------------- writeback ----------------
   val wb_data = MuxLookup(cs.wb_sel, alu_out)(Seq(
-    WB_ALU -> alu_out, WB_MEM -> memData, WB_PC4 -> pc_plus4))
+    WB_ALU -> alu_out, WB_MEM -> memData, WB_PC4 -> pc_plus4,
+    WB_CSR -> csr.io.rw.rdata))
   val wb_en = cs.rf_wen && rd_addr =/= 0.U
 
   // ---------------- memory ports ----------------
@@ -118,7 +156,7 @@ class Core(implicit c: RiscvhwConfig) extends Module {
   io.dmem.req.bits.write  := cs.mem_wr
   io.dmem.resp.ready      := state === sMem
 
-  io.illegal := (state === sExec) && !cs.legal
+  io.illegal := (state === sExec) && (!cs.legal || csr.io.rw.illegal)
 
   // ---------------- state machine ----------------
   // Each state waits for its handshake, so a memory that takes many cycles

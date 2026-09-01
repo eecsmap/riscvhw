@@ -34,6 +34,11 @@ object Consts {
   val OP1_ZERO = 0.U(2.W)  // explicit zero, so LUI is a plain add
   val OP1_RS1  = 1.U(2.W)
   val OP1_PC   = 2.U(2.W)
+  // 5-bit zero-extended rs1 field, the source for the CSRRxI forms. Routing it
+  // through op1 with op2 = 0 and ALU_ADD means the CSR write data reuses the
+  // ALU and needs no pass-through function of its own -- Sodor needs ALU_COPY1
+  // only because its op1 mux has no explicit zero.
+  val OP1_ZIMM = 3.U(2.W)
 
   // ALU operand 2
   val OP2_ZERO = 0.U(2.W)
@@ -68,10 +73,11 @@ object Consts {
   val ALU_X    =  0.U(5.W)
 
   // Writeback select
-  val WB_X    = 0.U(2.W)
-  val WB_ALU  = 1.U(2.W)
-  val WB_MEM  = 2.U(2.W)
-  val WB_PC4  = 3.U(2.W)   // link register for JAL/JALR
+  val WB_X    = 0.U(3.W)
+  val WB_ALU  = 1.U(3.W)
+  val WB_MEM  = 2.U(3.W)
+  val WB_PC4  = 3.U(3.W)   // link register for JAL/JALR
+  val WB_CSR  = 4.U(3.W)   // old CSR value
 
   val Y = true.B
   val N = false.B

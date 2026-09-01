@@ -18,7 +18,7 @@ cd "$LAB"
 # Programs whose results are checked against the specification rather than
 # against riscvm: WARL folding and machine-configuration differences are places
 # where two conformant implementations may legitimately disagree.
-SPEC_ONLY="rv64_csr_warl rv64_trap"
+SPEC_ONLY="rv64_csr_warl"
 
 if [ $# -gt 0 ]; then PROGS=("$@"); else
   mapfile -t PROGS < <(cd tests && ls *.S | sed 's/\.S$//')
@@ -49,7 +49,9 @@ for p in "${PROGS[@]}"; do
   python3 tools/tracediff.py "tests/$p.ref.trace" "tests/$p.hw.trace" || fail=1
   printf '  %-22s ' 'fast vs slow memory:'
   python3 tools/tracediff.py "tests/$p.hw.trace" "tests/$p.slow.trace" || fail=1
-  if [ "$p" = "rv64i_edge" ]; then
+  # rv64_trap keeps its spec check as well as the comparison: co-simulation
+  # proves the two agree, the spec check proves they are both right.
+  if [ "$p" = "rv64i_edge" ] || [ "$p" = "rv64_trap" ]; then
     # Co-simulation proves the two implementations agree; it cannot prove they
     # are both right. Check the cases where an implementation can be
     # self-consistently wrong against the spec directly.

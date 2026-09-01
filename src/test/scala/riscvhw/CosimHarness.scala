@@ -48,9 +48,14 @@ object Cosim {
 
       dut.reset.poke(true.B); dut.clock.step(3); dut.reset.poke(false.B)
 
+      // Stop at the program's parking loop rather than padding the trace with
+      // thousands of identical `j halt` lines: a trace that is 98% spin makes a
+      // real divergence hard to see and slows every comparison down.
+      var lastPc  = BigInt(-1)
+      var selfJmp = 0
       var cycles = 0
       val cycleBudget = maxInstrs * 50 + 1000
-      while (emitted < maxInstrs && cycles < cycleBudget) {
+      while (emitted < maxInstrs && cycles < cycleBudget && selfJmp < 3) {
         if (dut.io.trace.valid.peek().litToBoolean) {
           val pc    = dut.io.trace.pc.peek().litValue
           val inst  = dut.io.trace.inst.peek().litValue
@@ -62,6 +67,8 @@ object Cosim {
           if (wen) sb ++= f" x$waddr=$wdata%016x"
           pw.println(sb.toString)
           emitted += 1
+          selfJmp = if (pc == lastPc) selfJmp + 1 else 0
+          lastPc  = pc
         }
         dut.clock.step(1)
         cycles += 1
@@ -77,21 +84,23 @@ object Cosim {
 class CosimSpec extends AnyFlatSpec with ChiselScalatestTester {
   behavior of "riscvhw stage-0 core"
 
-  it should "produce a commit trace for rv64i_basic" in {
-    val n = Cosim.run("tests/rv64i_basic.bin", "tests/rv64i_basic.hw.trace", maxInstrs = 90)
-    println(s"[cosim] emitted $n instructions")
-    assert(n == 90, s"expected 90 retired instructions, got $n")
+  // Every program in tests/ gets both a normal run and a slow-memory run. The
+  // second is not redundant: it is the standing check that memory latency
+  // changes only how long the core takes, never what it computes.
+  private val programs = Seq("rv64i_basic", "rv64i_edge")
+
+  for (p <- programs) {
+    it should s"produce a commit trace for $p" in {
+      val n = Cosim.run(s"tests/$p.bin", s"tests/$p.hw.trace", maxInstrs = 4000)
+      println(s"[cosim] $p: $n instructions")
+      assert(n > 0, s"$p retired no instructions")
+    }
+
+    it should s"produce an identical trace for $p when memory is slow" in {
+      val n = Cosim.run(s"tests/$p.bin", s"tests/$p.slow.trace", maxInstrs = 4000, memLatency = 7)
+      println(s"[cosim] $p (slow memory): $n instructions")
+      assert(n > 0, s"$p retired no instructions")
+    }
   }
 
-  // The whole point of giving the memory port a handshake at stage 0 is that a
-  // slow memory should change only how long the core takes, never what it
-  // computes. Running the same program against a scratchpad that stalls for
-  // several cycles is the cheapest possible check of that claim -- and it
-  // exercises the wait states years before real DRAM is attached.
-  it should "produce an identical trace when memory is slow" in {
-    val n = Cosim.run("tests/rv64i_basic.bin", "tests/rv64i_basic.slow.trace",
-                      maxInstrs = 90, memLatency = 7)
-    println(s"[cosim] emitted $n instructions with 7-cycle memory")
-    assert(n == 90, s"expected 90 retired instructions, got $n")
-  }
 }

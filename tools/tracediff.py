@@ -59,6 +59,14 @@ def main():
             return 1
 
     if len(ref) != len(dut):
+        # A length difference is only meaningful if the traces were still going
+        # somewhere. Both sides stop at the program's parking loop, but they can
+        # stop after a different number of spins, which says nothing.
+        tail = ref[n:] or dut[n:]
+        if all(t[0] == tail[0][0] for t in tail):
+            print(f'OK: {n} instructions identical '
+                  f'(then {abs(len(ref) - len(dut))} extra spins at {tail[0][0]})')
+            return 0
         print(f'traces agree on all {n} common instructions, but lengths differ: '
               f'ref={len(ref)} dut={len(dut)}')
         return 1

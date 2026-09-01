@@ -40,6 +40,12 @@ class Core(implicit c: RiscvhwConfig) extends Module {
   val sFetch :: sExec :: sMem :: sWb :: Nil = Enum(4)
   val state = RegInit(sFetch)
 
+  // Tracks that this state's memory request has been accepted, so `valid` is
+  // dropped while waiting for the response. Without it the core keeps asserting
+  // a request for the whole wait and issues a second access the moment the
+  // memory goes ready again.
+  val reqSent = RegInit(false.B)
+
   val pc      = RegInit(c.resetVector.U(c.xlen.W))
   val inst    = Reg(UInt(32.W))
   val memData = Reg(UInt(c.xlen.W))
@@ -96,7 +102,7 @@ class Core(implicit c: RiscvhwConfig) extends Module {
   val wb_en = cs.rf_wen && rd_addr =/= 0.U
 
   // ---------------- memory ports ----------------
-  io.imem.req.valid       := state === sFetch
+  io.imem.req.valid       := (state === sFetch) && !reqSent
   io.imem.req.bits.addr   := pc
   io.imem.req.bits.wdata  := 0.U
   io.imem.req.bits.size   := MemSize.W
@@ -104,7 +110,7 @@ class Core(implicit c: RiscvhwConfig) extends Module {
   io.imem.req.bits.write  := false.B
   io.imem.resp.ready      := state === sFetch
 
-  io.dmem.req.valid       := (state === sMem) && cs.mem_en
+  io.dmem.req.valid       := (state === sMem) && cs.mem_en && !reqSent
   io.dmem.req.bits.addr   := alu_out
   io.dmem.req.bits.wdata  := rs2_data
   io.dmem.req.bits.size   := cs.mem_size
@@ -119,18 +125,21 @@ class Core(implicit c: RiscvhwConfig) extends Module {
   // simply keeps the core in that state. Nothing else has to know.
   switch (state) {
     is (sFetch) {
-      when (io.imem.req.fire) { /* request accepted */ }
+      when (io.imem.req.fire)  { reqSent := true.B }
       when (io.imem.resp.fire) {
-        inst  := io.imem.resp.bits.rdata(31, 0)
-        state := sExec
+        inst    := io.imem.resp.bits.rdata(31, 0)
+        reqSent := false.B
+        state   := sExec
       }
     }
     is (sExec) {
       state := Mux(cs.mem_en, sMem, sWb)
     }
     is (sMem) {
+      when (io.dmem.req.fire)  { reqSent := true.B }
       when (io.dmem.resp.fire) {
         memData := io.dmem.resp.bits.rdata
+        reqSent := false.B
         state   := sWb
       }
     }

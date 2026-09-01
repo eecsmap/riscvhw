@@ -32,43 +32,58 @@ class Scratchpad(nPorts: Int = 2, latency: Int = 0)(implicit c: RiscvhwConfig) e
   }
 
   io.ports.foreach { p =>
-    val addr   = p.req.bits.addr
-    val off    = addr(2, 0)
-    val bytes  = (1.U << p.req.bits.size)               // 1,2,4,8
-    val rawVec = mem.read(wordIdx(addr))
-    val raw    = Cat(rawVec.reverse)                    // little-endian assembly
+    // One outstanding access per port, held in an explicit little state
+    // machine. Writing this as a state machine even for latency == 0 keeps a
+    // single code path: the response must be latched (the address may change
+    // while the core waits) and must stay valid until the core takes it.
+    val sIdle :: sWait :: sResp :: Nil = Enum(3)
+    val st = RegInit(sIdle)
+
+    val cnt      = RegInit(0.U(8.W))
+    val dataReg  = Reg(UInt(c.xlen.W))
+
+    val addr    = p.req.bits.addr
+    val off     = addr(2, 0)
+    val bytes   = (1.U << p.req.bits.size)              // 1, 2, 4 or 8
+    val rawVec  = mem.read(wordIdx(addr))
+    val raw     = Cat(rawVec.reverse)                   // little-endian assembly
     val shifted = raw >> (off << 3)
 
     // Mask to the requested width, then sign- or zero-extend.
     val maskBits = (bytes << 3)(6, 0)
-    val masked   = shifted & ((1.U << maskBits) - 1.U)
+    val allOnes  = ((1.U << maskBits) - 1.U)(c.xlen - 1, 0)
+    val masked   = shifted & allOnes
     val signBit  = (shifted >> (maskBits - 1.U))(0)
-    val extended = Mux(p.req.bits.signed && signBit && maskBits < c.xlen.U,
-                       masked | (~((1.U << maskBits) - 1.U)).asUInt,
-                       masked)
+    val extended = Mux(p.req.bits.signed && signBit && (maskBits < c.xlen.U),
+                       masked | (~allOnes).asUInt, masked)
 
-    when (p.req.fire && p.req.bits.write) {
-      val wvec = VecInit(Seq.tabulate(8) { i =>
-        val byteEn = (i.U >= off) && (i.U < (off +& bytes))
-        Mux(byteEn, (p.req.bits.wdata >> ((i.U - off) << 3))(7, 0), rawVec(i))
-      })
-      mem.write(wordIdx(addr), wvec)
+    p.req.ready := st === sIdle
+
+    when (p.req.fire) {
+      when (p.req.bits.write) {
+        val wvec = VecInit(Seq.tabulate(8) { i =>
+          val byteEn = (i.U >= off) && (i.U < (off +& bytes))
+          Mux(byteEn, (p.req.bits.wdata >> ((i.U - off) << 3))(7, 0), rawVec(i))
+        })
+        mem.write(wordIdx(addr), wvec)
+      }
+      // Latch the read data now: by the time the response is delivered the
+      // request bits may already be showing a different address.
+      dataReg := extended
+      cnt     := latency.U
+      st      := Mux(latency.U === 0.U, sResp, sWait)
     }
 
-    // latency == 0: combinational answer, always ready.
-    val delay = if (latency == 0) 0 else latency
-    val respValid = if (delay == 0) RegNext(p.req.fire, false.B) else {
-      val cnt = RegInit(0.U(8.W))
-      val busy = RegInit(false.B)
-      when (p.req.fire) { busy := true.B; cnt := delay.U }
-      when (busy && cnt =/= 0.U) { cnt := cnt - 1.U }
-      when (busy && cnt === 0.U) { busy := false.B }
-      busy && cnt === 0.U
+    when (st === sWait) {
+      cnt := cnt - 1.U
+      when (cnt === 1.U) { st := sResp }
     }
 
-    p.req.ready       := true.B
-    p.resp.valid      := respValid
-    p.resp.bits.rdata := RegNext(extended)
+    // Hold the response until the core actually takes it.
+    when (st === sResp && p.resp.fire) { st := sIdle }
+
+    p.resp.valid      := st === sResp
+    p.resp.bits.rdata := dataReg
     p.resp.bits.fault := false.B
   }
 }

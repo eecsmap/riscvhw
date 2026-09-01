@@ -10,3 +10,7 @@ generated/
 *.sv
 !src/**/*.sv
 test_run_dir/
+*.elf
+*.bin
+*.dump
+*.trace

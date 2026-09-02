@@ -18,10 +18,10 @@ import java.nio.file.{Files, Paths}
   */
 object Cosim {
   def run(binPath: String, tracePath: String, maxInstrs: Int,
-          memLatency: Int = 0): Int = {
+          memLatency: Int = 0, timing: Option[riscvhw.mem.MemTiming] = None): Int = {
     implicit val cfg: RiscvhwConfig = RiscvhwConfig()
     var emitted = 0
-    RawTester.test(new System(latency = memLatency)) { dut =>
+    RawTester.test(new System(latency = memLatency, timing = timing)) { dut =>
       // chiseltest watchdogs the clock at 1000 steps by default; a slow memory
       // pushes an 90-instruction program well past that, so run untimed and
       // rely on the explicit cycle budget below instead.
@@ -76,6 +76,16 @@ object Cosim {
       pw.close()
       if (cycles >= cycleBudget)
         println(s"[cosim] cycle budget exhausted after $emitted instructions -- core may be stuck")
+
+      // Read the trace back and check it holds what was just written. One run
+      // reported 15 retired instructions and left a zero-byte file behind, and
+      // the test passed: the count lives in memory, the comparison reads the
+      // file, and nothing tied the two together. Whatever the cause -- and it
+      // did not reproduce in isolation -- a silent empty trace turns the whole
+      // co-simulation into a test that cannot fail, so it has to be loud.
+      val written = scala.io.Source.fromFile(tracePath).getLines().size
+      require(written == emitted,
+              s"trace file $tracePath holds $written lines but $emitted instructions retired")
     }
     emitted
   }
@@ -114,6 +124,16 @@ class CosimSpec extends AnyFlatSpec with ChiselScalatestTester {
     it should s"produce an identical trace for $p when memory is slow" in {
       val n = Cosim.run(s"tests/$p.bin", s"tests/$p.slow.trace", maxInstrs = 4000, memLatency = 7)
       println(s"[cosim] $p (slow memory): $n instructions")
+      assert(n > 0, s"$p retired no instructions")
+    }
+
+    // Latency that changes from one access to the next, which a fixed delay
+    // cannot catch: a core that latches something at the wrong moment can be
+    // correct at every constant latency and wrong when it varies.
+    it should s"produce an identical trace for $p when memory latency varies" in {
+      val n = Cosim.run(s"tests/$p.bin", s"tests/$p.vary.trace", maxInstrs = 4000,
+                        timing = Some(riscvhw.mem.Variable(1, 13)))
+      println(s"[cosim] $p (variable latency): $n instructions")
       assert(n > 0, s"$p retired no instructions")
     }
   }

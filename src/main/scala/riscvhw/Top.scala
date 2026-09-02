@@ -3,10 +3,10 @@ package riscvhw
 import chisel3._
 import circt.stage.ChiselStage
 import riscvhw.core.Core
-import riscvhw.mem.Scratchpad
+import riscvhw.mem.{Scratchpad, MemDelay, MemTiming}
 
 /** Stage-0 system: core + scratchpad. Replaced by a Chipyard tile at stage 3. */
-class System(latency: Int = 0)(implicit c: RiscvhwConfig) extends Module {
+class System(latency: Int = 0, timing: Option[MemTiming] = None)(implicit c: RiscvhwConfig) extends Module {
   val io = IO(new Bundle {
     val trace   = Output(new riscvhw.core.TraceIo)
     val illegal = Output(Bool())
@@ -24,8 +24,18 @@ class System(latency: Int = 0)(implicit c: RiscvhwConfig) extends Module {
   core.io.resetVector := c.resetVector.U   // no boot ROM in the standalone tests
   val mem  = Module(new Scratchpad(nPorts = 2, latency = latency))
 
-  mem.io.ports(0) <> core.io.imem
-  mem.io.ports(1) <> core.io.dmem
+  // `timing` inserts a delay model between the core and the memory. It is
+  // separate from the scratchpad's own `latency` so the model can later front
+  // the bus adapter instead, without the memory knowing.
+  timing match {
+    case None =>
+      mem.io.ports(0) <> core.io.imem
+      mem.io.ports(1) <> core.io.dmem
+    case Some(t) =>
+      val di = Module(new MemDelay(t)); val dd = Module(new MemDelay(t))
+      di.io.in <> core.io.imem; mem.io.ports(0) <> di.io.out
+      dd.io.in <> core.io.dmem; mem.io.ports(1) <> dd.io.out
+  }
   mem.io.load     := io.load
 
   io.trace   := core.io.trace

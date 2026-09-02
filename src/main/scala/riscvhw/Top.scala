@@ -10,6 +10,10 @@ class System(latency: Int = 0)(implicit c: RiscvhwConfig) extends Module {
   val io = IO(new Bundle {
     val trace   = Output(new riscvhw.core.TraceIo)
     val illegal = Output(Bool())
+    /** riscv-tests report their result by storing to a fixed address; this
+      * mirrors that store out so the testbench can see it. It is a host
+      * interface, not core logic -- the equivalent of HTIF on a real chip. */
+    val tohost  = Output(chisel3.util.Valid(UInt(c.xlen.W)))
     val load    = Input(chisel3.util.Valid(new Bundle {
       val addr = UInt(c.xlen.W)
       val data = UInt(64.W)
@@ -25,6 +29,10 @@ class System(latency: Int = 0)(implicit c: RiscvhwConfig) extends Module {
 
   io.trace   := core.io.trace
   io.illegal := core.io.illegal
+
+  io.tohost.valid := core.io.dmem.req.fire && core.io.dmem.req.bits.write &&
+                     (core.io.dmem.req.bits.addr === c.tohostAddr.U)
+  io.tohost.bits  := core.io.dmem.req.bits.wdata
 }
 
 object Elaborate extends App {

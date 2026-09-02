@@ -17,6 +17,11 @@ case class RiscvhwConfig(
   memBase:     BigInt  = BigInt("80000000", 16),
   // Emit a commit trace for co-simulation against riscvm.
   trace:       Boolean = true,
+  // Where riscv-tests write their result. The suite has no other way to report:
+  // it signals completion by storing to this address, 1 for pass and
+  // (n << 1) | 1 for a failure in test n. Watching for that store is the whole
+  // host interface a bare test needs.
+  tohostAddr:  BigInt = BigInt("80001000", 16),
 ) {
   require(xlen == 64, "only RV64 is implemented")
 }

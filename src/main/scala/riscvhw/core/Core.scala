@@ -21,6 +21,14 @@ class CoreIo(implicit c: RiscvhwConfig) extends Bundle {
   val imem  = new MemPort
   val dmem  = new MemPort
   val trace = Output(new TraceIo)
+  /** Where to start fetching after reset.
+    *
+    * An input rather than a constant because the surrounding SoC decides it.
+    * Chipyard boots every hart in a boot ROM that waits for the program to
+    * arrive over the serial link and only then jumps to DRAM; a core that
+    * hardcodes the DRAM address instead starts executing whatever happens to be
+    * at 0x80000000 before anything has been loaded there. */
+  val resetVector = Input(UInt(c.xlen.W))
   /** Raised when decode fails. Becomes an exception at stage 2; until then it
     * is brought out so the testbench can stop rather than run off into weeds. */
   val illegal = Output(Bool())
@@ -51,6 +59,9 @@ class Core(implicit c: RiscvhwConfig) extends Module {
   val reqSent = RegInit(false.B)
 
   val pc      = RegInit(c.resetVector.U(c.xlen.W))
+  // Reset takes the vector supplied by the SoC; the config value is only the
+  // default used by the standalone tests, which have no boot ROM.
+  when (reset.asBool) { pc := io.resetVector }
   val inst    = Reg(UInt(32.W))
   val memData = Reg(UInt(c.xlen.W))
 

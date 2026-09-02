@@ -21,6 +21,7 @@ class System(latency: Int = 0)(implicit c: RiscvhwConfig) extends Module {
   })
 
   val core = Module(new Core)
+  core.io.resetVector := c.resetVector.U   // no boot ROM in the standalone tests
   val mem  = Module(new Scratchpad(nPorts = 2, latency = latency))
 
   mem.io.ports(0) <> core.io.imem

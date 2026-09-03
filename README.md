@@ -102,4 +102,5 @@ src/main/scala/riscvhw/
     Scratchpad.scala    stage-0 存储器(可注入延迟)
 chipyard/               Chipyard 接入(阶段 3 起)
 tools/                  co-simulation 工具
+docs/                   设计记录:为什么这样做,以及当时没想到的
 ```

@@ -6,6 +6,13 @@ import riscvhw.RiscvhwConfig
 
 /** Stage-0 memory: a byte-addressable scratchpad with two independent ports.
   *
+  * SIMULATION ONLY -- this does not synthesise. `Mem` gives an asynchronous
+  * read, and 7-series block RAM has no asynchronous read mode, so it can only
+  * map to LUTRAM; at 1 MB it fits neither LUTRAM (~1.1 Mbit) nor all the block
+  * RAM on an xc7z020 (~4.9 Mbit). That is fine, because from stage 3 the core
+  * reaches real DDR over TileLink and this model only carries the fast
+  * iteration loop. See docs/002-scratchpad-is-simulation-only.md.
+  *
   * Answers in the same cycle, but still speaks the handshake protocol, so
   * replacing it with a bus adapter at stage 3 is a drop-in change. The
   * `latency` parameter injects artificial delay, which is how "memory wait"
